@@ -6,11 +6,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.PorterDuff;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -22,21 +19,15 @@ import android.widget.PopupMenu;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.AppCompatImageView;
-import androidx.appcompat.widget.Toolbar;
-import androidx.cardview.widget.CardView;
-import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.view.GravityCompat;
-import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.material.appbar.AppBarLayout;
-import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.tabs.TabLayout;
 import com.hwangjr.rxbus.RxBus;
 import com.kunfei.bookshelf.BuildConfig;
@@ -44,22 +35,20 @@ import com.kunfei.bookshelf.DbHelper;
 import com.kunfei.bookshelf.MApplication;
 import com.kunfei.bookshelf.R;
 import com.kunfei.bookshelf.base.BaseTabActivity;
-import com.kunfei.bookshelf.base.observer.MySingleObserver;
 import com.kunfei.bookshelf.constant.RxBusTag;
+import com.kunfei.bookshelf.databinding.ActivityMainBinding;
 import com.kunfei.bookshelf.help.FileHelp;
 import com.kunfei.bookshelf.help.ProcessTextHelp;
 import com.kunfei.bookshelf.help.permission.Permissions;
 import com.kunfei.bookshelf.help.permission.PermissionsCompat;
-import com.kunfei.bookshelf.help.storage.Backup;
-import com.kunfei.bookshelf.help.storage.Restore;
-import com.kunfei.bookshelf.help.storage.WebDavHelp;
+import com.kunfei.bookshelf.help.storage.BackupRestoreUi;
 import com.kunfei.bookshelf.model.UpLastChapterModel;
+import com.kunfei.bookshelf.presenter.BookSourcePresenter;
 import com.kunfei.bookshelf.presenter.MainPresenter;
 import com.kunfei.bookshelf.presenter.contract.MainContract;
 import com.kunfei.bookshelf.service.WebService;
 import com.kunfei.bookshelf.utils.ACache;
 import com.kunfei.bookshelf.utils.StringUtils;
-import com.kunfei.bookshelf.utils.theme.ATH;
 import com.kunfei.bookshelf.utils.theme.NavigationViewUtil;
 import com.kunfei.bookshelf.utils.theme.ThemeStore;
 import com.kunfei.bookshelf.view.fragment.BookListFragment;
@@ -67,40 +56,21 @@ import com.kunfei.bookshelf.view.fragment.FindBookFragment;
 import com.kunfei.bookshelf.widget.modialog.InputDialog;
 import com.kunfei.bookshelf.widget.modialog.MoDialogHUD;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
-import io.reactivex.Single;
-import io.reactivex.SingleOnSubscribe;
-import io.reactivex.android.schedulers.AndroidSchedulers;
-import io.reactivex.schedulers.Schedulers;
 import kotlin.Unit;
 
 import static com.kunfei.bookshelf.utils.NetworkUtils.isNetWorkAvailable;
 
 public class MainActivity extends BaseTabActivity<MainContract.Presenter> implements MainContract.View,
-        BookListFragment.CallbackValue,
-        Backup.CallBack {
+        BookListFragment.CallbackValue {
     private final int requestSource = 14;
-    private final int backupSelectRequestCode = 23;
-    private final int restoreSelectRequestCode = 33;
     private String[] mTitles;
+    private final int REQUEST_QR = 202;
 
-    @BindView(R.id.drawer)
-    DrawerLayout drawer;
-    @BindView(R.id.navigation_view)
-    NavigationView navigationView;
-    @BindView(R.id.toolbar)
-    Toolbar toolbar;
-    @BindView(R.id.main_view)
-    CoordinatorLayout mainView;
-    @BindView(R.id.card_search)
-    CardView cardSearch;
-
+    private ActivityMainBinding binding;
     private AppCompatImageView vwNightTheme;
     private int group;
     private ActionBarDrawerToggle mDrawerToggle;
@@ -132,8 +102,8 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
     @Override
     protected void onCreateActivity() {
         getWindow().getDecorView().setBackgroundColor(ThemeStore.backgroundColor(this));
-        setContentView(R.layout.activity_main);
-        ButterKnife.bind(this);
+        binding = ActivityMainBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
     }
 
     @Override
@@ -141,7 +111,6 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
         super.onResume();
 
         String shared_url = preferences.getString("shared_url", "");
-        assert shared_url != null;
         if (shared_url.length() > 1) {
             InputDialog.builder(this)
                     .setTitle(getString(R.string.add_book_url))
@@ -219,20 +188,20 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
     @Override
     protected void bindView() {
         super.bindView();
-        setSupportActionBar(toolbar);
+        setSupportActionBar(binding.mainView.toolbar);
         setupActionBar();
-        cardSearch.setCardBackgroundColor(ThemeStore.primaryColorDark(this));
+        binding.mainView.cardSearch.setCardBackgroundColor(ThemeStore.primaryColorDark(this));
         initDrawer();
         initTabLayout();
         upGroup(group);
         moDialogHUD = new MoDialogHUD(this);
         if (!preferences.getBoolean("behaviorMain", true)) {
-            AppBarLayout.LayoutParams params = (AppBarLayout.LayoutParams) toolbar.getLayoutParams();
+            AppBarLayout.LayoutParams params = (AppBarLayout.LayoutParams) binding.mainView.toolbar.getLayoutParams();
             params.setScrollFlags(0);
         }
         //点击跳转搜索页
-        cardSearch.setOnClickListener(view -> startActivityByAnim(new Intent(this, SearchBookActivity.class),
-                toolbar, "sharedView", android.R.anim.fade_in, android.R.anim.fade_out));
+        binding.mainView.cardSearch.setOnClickListener(view -> startActivityByAnim(new Intent(this, SearchBookActivity.class),
+                binding.mainView.toolbar, "sharedView", android.R.anim.fade_in, android.R.anim.fade_out));
     }
 
     //初始化TabLayout和ViewPager
@@ -461,6 +430,11 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
                             }
                         }).show();
                 break;
+            case R.id.action_add_qrcode:
+
+                Intent intent = new Intent(this, QRCodeScanActivity.class);
+                startActivityForResult(intent, REQUEST_QR);
+                break;
             case R.id.action_download_all:
                 if (!isNetWorkAvailable()) {
                     toast(R.string.network_connection_unavailable);
@@ -483,10 +457,10 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
                 }
                 break;
             case android.R.id.home:
-                if (drawer.isDrawerOpen(GravityCompat.START)) {
-                    drawer.closeDrawers();
+                if (binding.drawer.isDrawerOpen(GravityCompat.START)) {
+                    binding.drawer.closeDrawers();
                 } else {
-                    drawer.openDrawer(GravityCompat.START, !MApplication.isEInkMode);
+                    binding.drawer.openDrawer(GravityCompat.START, !MApplication.isEInkMode);
                 }
                 break;
         }
@@ -503,9 +477,9 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
 
     //初始化侧边栏
     private void initDrawer() {
-        mDrawerToggle = new ActionBarDrawerToggle(this, drawer, R.string.navigation_drawer_open, R.string.navigation_drawer_close);
+        mDrawerToggle = new ActionBarDrawerToggle(this, binding.drawer, R.string.navigation_drawer_open, R.string.navigation_drawer_close);
         mDrawerToggle.syncState();
-        drawer.addDrawerListener(mDrawerToggle);
+        binding.drawer.addDrawerListener(mDrawerToggle);
 
         setUpNavigationView();
     }
@@ -535,19 +509,19 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
      * 侧边栏按钮
      */
     private void setUpNavigationView() {
-        navigationView.setBackgroundColor(ThemeStore.backgroundColor(this));
-        NavigationViewUtil.setItemIconColors(navigationView, getResources().getColor(R.color.tv_text_default), ThemeStore.accentColor(this));
-        NavigationViewUtil.disableScrollbar(navigationView);
+        binding.navigationView.setBackgroundColor(ThemeStore.backgroundColor(this));
+        NavigationViewUtil.setItemIconColors(binding.navigationView, getResources().getColor(R.color.tv_text_default), ThemeStore.accentColor(this));
+        NavigationViewUtil.disableScrollbar(binding.navigationView);
         @SuppressLint("InflateParams") View headerView = LayoutInflater.from(this).inflate(R.layout.navigation_header, null);
         AppCompatImageView imageView = headerView.findViewById(R.id.iv_read);
         imageView.setColorFilter(ThemeStore.accentColor(this));
-        navigationView.addHeaderView(headerView);
-        Menu drawerMenu = navigationView.getMenu();
+        binding.navigationView.addHeaderView(headerView);
+        Menu drawerMenu = binding.navigationView.getMenu();
         vwNightTheme = drawerMenu.findItem(R.id.action_theme).getActionView().findViewById(R.id.iv_theme_day_night);
         upThemeVw();
         vwNightTheme.setOnClickListener(view -> setNightTheme(!isNightTheme()));
-        navigationView.setNavigationItemSelectedListener(menuItem -> {
-            drawer.closeDrawer(GravityCompat.START, !MApplication.isEInkMode);
+        binding.navigationView.setNavigationItemSelectedListener(menuItem -> {
+            binding.drawer.closeDrawer(GravityCompat.START, !MApplication.isEInkMode);
             switch (menuItem.getItemId()) {
                 case R.id.action_book_source_manage:
                     handler.postDelayed(() -> BookSourceActivity.startThis(this, requestSource), 200);
@@ -568,10 +542,10 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
                     handler.postDelayed(() -> DonateActivity.startThis(this), 200);
                     break;
                 case R.id.action_backup:
-                    handler.postDelayed(this::backup, 200);
+                    handler.postDelayed(() -> BackupRestoreUi.INSTANCE.backup(this), 200);
                     break;
                 case R.id.action_restore:
-                    handler.postDelayed(this::restore, 200);
+                    handler.postDelayed(() -> BackupRestoreUi.INSTANCE.restore(this), 200);
                     break;
                 case R.id.action_theme:
                     handler.postDelayed(() -> ThemeSettingActivity.startThis(this), 200);
@@ -602,128 +576,6 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
                     preferences.edit().putInt("bookshelfLayout", which).apply();
                     recreate();
                 }).show();
-    }
-
-    private String getBackupPath() {
-        return preferences.getString("backupPath", "");
-    }
-
-    /**
-     * 备份
-     */
-    private void backup() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            String path = getBackupPath();
-            if (TextUtils.isEmpty(path)) {
-                selectBackupFolder();
-            } else {
-                Backup.INSTANCE.backup(this, Uri.parse(path), MainActivity.this);
-            }
-        } else {
-            backupOld();
-        }
-    }
-
-    private void backupOld() {
-        new PermissionsCompat.Builder(this)
-                .addPermissions(Permissions.READ_EXTERNAL_STORAGE, Permissions.WRITE_EXTERNAL_STORAGE)
-                .rationale(R.string.backup_permission)
-                .onGranted((requestCode) -> {
-                    AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this)
-                            .setTitle(R.string.backup_confirmation)
-                            .setMessage(R.string.backup_message)
-                            .setPositiveButton(R.string.ok, (dialog, which) ->
-                                    Backup.INSTANCE.backup(MainActivity.this, null, MainActivity.this)
-                            )
-                            .setNegativeButton(R.string.cancel, null)
-                            .show();
-                    ATH.setAlertDialogTint(alertDialog);
-                    return Unit.INSTANCE;
-                }).request();
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private void selectBackupFolder() {
-        try {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivityForResult(intent, backupSelectRequestCode);
-        } catch (Exception e) {
-            backupOld();
-        }
-    }
-
-    /**
-     * 恢复
-     */
-    private void restore() {
-        Single.create((SingleOnSubscribe<ArrayList<String>>) emitter -> {
-            emitter.onSuccess(WebDavHelp.INSTANCE.getWebDavFileNames());
-        }).subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(new MySingleObserver<ArrayList<String>>() {
-                    @Override
-                    public void onSuccess(ArrayList<String> strings) {
-                        if (!WebDavHelp.INSTANCE.showRestoreDialog(MainActivity.this, strings)) {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                                String path = getBackupPath();
-                                if (TextUtils.isEmpty(path)) {
-                                    selectRestoreFolder();
-                                } else {
-                                    restore(Uri.parse(path));
-                                }
-                            } else {
-                                new PermissionsCompat.Builder(MainActivity.this)
-                                        .addPermissions(Permissions.READ_EXTERNAL_STORAGE, Permissions.WRITE_EXTERNAL_STORAGE)
-                                        .rationale(R.string.restore_permission)
-                                        .onGranted((requestCode) -> {
-                                            restoreOld();
-                                            return Unit.INSTANCE;
-                                        }).request();
-                            }
-                        }
-                    }
-                });
-
-    }
-
-    private void restore(Uri uri) {
-        Single.create((SingleOnSubscribe<Boolean>) e -> {
-            Restore.INSTANCE.restore(this, uri);
-            e.onSuccess(true);
-        }).subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(new MySingleObserver<Boolean>() {
-                    @Override
-                    public void onSuccess(Boolean t) {
-                        recreate();
-                    }
-                });
-    }
-
-    private void restoreOld() {
-        Single.create((SingleOnSubscribe<Boolean>) e -> {
-            Restore.INSTANCE.restore(Backup.INSTANCE.getDefaultPath());
-            e.onSuccess(true);
-        }).subscribeOn(Schedulers.io())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(new MySingleObserver<Boolean>() {
-                    @Override
-                    public void onSuccess(Boolean t) {
-                        recreate();
-                    }
-                });
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private void selectRestoreFolder() {
-        try {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivityForResult(intent, restoreSelectRequestCode);
-        } catch (Exception e) {
-            restoreOld();
-        }
     }
 
     /**
@@ -779,8 +631,8 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
             return true;
         } else {
             if (keyCode == KeyEvent.KEYCODE_BACK) {
-                if (drawer.isDrawerOpen(GravityCompat.START)) {
-                    drawer.closeDrawer(GravityCompat.START, !MApplication.isEInkMode);
+                if (binding.drawer.isDrawerOpen(GravityCompat.START)) {
+                    binding.drawer.closeDrawer(GravityCompat.START, !MApplication.isEInkMode);
                     return true;
                 }
                 exit();
@@ -790,17 +642,12 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
         }
     }
 
-    @Override
-    public void backupSuccess() {
-        toast(R.string.backup_success);
-    }
-
     /**
      * 退出
      */
     public void exit() {
         if ((System.currentTimeMillis() - exitTime) > 2000) {
-            showSnackBar(toolbar, getString(R.string.double_click_exit));
+            showSnackBar(binding.mainView.toolbar, getString(R.string.double_click_exit));
             exitTime = System.currentTimeMillis();
         } else {
             finish();
@@ -822,6 +669,7 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        BackupRestoreUi.INSTANCE.onActivityResult(requestCode, resultCode, data);
         switch (requestCode) {
             case requestSource:
                 if (resultCode == RESULT_OK) {
@@ -831,22 +679,20 @@ public class MainActivity extends BaseTabActivity<MainContract.Presenter> implem
                     }
                 }
                 break;
-            case backupSelectRequestCode:
-                if (resultCode == RESULT_OK && data != null) {
-                    Uri uri = data.getData();
-                    if (uri == null) return;
-                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    preferences.edit().putString("backupPath", uri.toString()).apply();
-                    backup();
-                }
-                break;
-            case restoreSelectRequestCode:
-                if (resultCode == RESULT_OK && data != null) {
-                    Uri uri = data.getData();
-                    if (uri == null) return;
-                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    preferences.edit().putString("backupPath", uri.toString()).apply();
-                    restore(uri);
+            case REQUEST_QR:
+                if (resultCode == RESULT_OK) {
+                    String result = data.getStringExtra("result");
+                    if (!StringUtils.isTrimEmpty(result)) {
+                        result=result.trim();
+                        // 如果只有书源,则导入书源
+                        if(result.replaceAll("(\\s|\n)*","").matches("^\\{.*$")) {
+                            new BookSourcePresenter().importBookSource(result);
+                            break;
+                        }
+//                        String[] string=result.split("#",2);
+//                        mPresenter.addBookUrl(string[0]);
+                        mPresenter.addBookUrl(result);
+                    }
                 }
                 break;
         }

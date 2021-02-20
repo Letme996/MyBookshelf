@@ -19,10 +19,12 @@ import com.kunfei.bookshelf.model.impl.IHttpPostApi;
 
 import org.apache.commons.lang3.StringEscapeUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.Observable;
+import okhttp3.ConnectionSpec;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
@@ -41,19 +43,19 @@ public class BaseModelImpl {
     public Observable<Response<String>> getResponseO(AnalyzeUrl analyzeUrl) {
         switch (analyzeUrl.getUrlMode()) {
             case POST:
-                return getRetrofitString(analyzeUrl.getHost())
+                return getRetrofitString(analyzeUrl.getHost(), analyzeUrl.getCharCode())
                         .create(IHttpPostApi.class)
                         .postMap(analyzeUrl.getPath(),
                                 analyzeUrl.getQueryMap(),
                                 analyzeUrl.getHeaderMap());
             case GET:
-                return getRetrofitString(analyzeUrl.getHost())
+                return getRetrofitString(analyzeUrl.getHost(), analyzeUrl.getCharCode())
                         .create(IHttpGetApi.class)
                         .getMap(analyzeUrl.getPath(),
                                 analyzeUrl.getQueryMap(),
                                 analyzeUrl.getHeaderMap());
             default:
-                return getRetrofitString(analyzeUrl.getHost())
+                return getRetrofitString(analyzeUrl.getHost(), analyzeUrl.getCharCode())
                         .create(IHttpGetApi.class)
                         .get(analyzeUrl.getPath(),
                                 analyzeUrl.getHeaderMap());
@@ -82,6 +84,10 @@ public class BaseModelImpl {
 
     synchronized public static OkHttpClient getClient() {
         if (httpClient == null) {
+            ArrayList<ConnectionSpec> specs = new ArrayList<>();
+            specs.add(ConnectionSpec.MODERN_TLS);
+            specs.add(ConnectionSpec.COMPATIBLE_TLS);
+            specs.add(ConnectionSpec.CLEARTEXT);
             httpClient = new OkHttpClient.Builder()
                     .connectTimeout(15, TimeUnit.SECONDS)
                     .writeTimeout(15, TimeUnit.SECONDS)
@@ -89,6 +95,9 @@ public class BaseModelImpl {
                     .retryOnConnectionFailure(true)
                     .sslSocketFactory(SSLSocketClient.getSSLSocketFactory(), SSLSocketClient.createTrustAllManager())
                     .hostnameVerifier(SSLSocketClient.getHostnameVerifier())
+                    .followRedirects(true)
+                    .followSslRedirects(true)
+                    .connectionSpecs(specs)
                     .protocols(Collections.singletonList(Protocol.HTTP_1_1))
                     .addInterceptor(getHeaderInterceptor())
                     .build();
@@ -191,7 +200,7 @@ public class BaseModelImpl {
         });
     }
 
-    private class Web {
+    private static class Web {
         private String content;
         private String js = "document.documentElement.outerHTML";
 
